@@ -1028,7 +1028,58 @@ export namespace Provider {
     }
   }
 
-  function fromOllamaProvider(): Info {
+  function fromOllamaModel(id: string): Model {
+    const key = id.endsWith(":latest") ? id.slice(0, -7) : id
+    const item = Ollama.MODELS[key]
+    return {
+      id: ModelID.make(id),
+      providerID: ProviderID.make("ollama"),
+      name: item?.name ?? id,
+      family: item?.family ?? key.split(/[:/-]/)[0] ?? "ollama",
+      api: {
+        id,
+        url: `${Ollama.DEFAULT_URL}/v1`,
+        npm: "@ai-sdk/openai-compatible",
+      },
+      status: "active",
+      headers: {},
+      options: {},
+      cost: {
+        input: 0,
+        output: 0,
+        cache: { read: 0, write: 0 },
+      },
+      limit: {
+        context: item?.context ?? 128000,
+        output: 8192,
+      },
+      capabilities: {
+        temperature: true,
+        reasoning: item?.reasoning ?? false,
+        attachment: false,
+        toolcall: item?.toolCall ?? true,
+        input: {
+          text: true,
+          audio: false,
+          image: false,
+          video: false,
+          pdf: false,
+        },
+        output: {
+          text: true,
+          audio: false,
+          image: false,
+          video: false,
+          pdf: false,
+        },
+        interleaved: false,
+      },
+      release_date: "",
+      variants: {},
+    }
+  }
+
+  function fromOllamaProvider(models: string[]): Info {
     return {
       id: ProviderID.make("ollama"),
       source: "custom",
@@ -1038,57 +1089,7 @@ export namespace Provider {
         baseURL: process.env.OLLAMA_URL || `${Ollama.DEFAULT_URL}/v1`,
         apiKey: "ollama",
       },
-      models: Object.fromEntries(
-        Object.values(Ollama.MODELS).map((model) => [
-          model.id,
-          {
-            id: ModelID.make(model.id),
-            providerID: ProviderID.make("ollama"),
-            name: model.name,
-            family: model.family,
-            api: {
-              id: model.id,
-              url: `${Ollama.DEFAULT_URL}/v1`,
-              npm: "@ai-sdk/openai-compatible",
-            },
-            status: "active",
-            headers: {},
-            options: {},
-            cost: {
-              input: 0,
-              output: 0,
-              cache: { read: 0, write: 0 },
-            },
-            limit: {
-              context: model.context,
-              output: 8192,
-            },
-            capabilities: {
-              temperature: true,
-              reasoning: model.reasoning,
-              attachment: false,
-              toolcall: model.toolCall,
-              input: {
-                text: true,
-                audio: false,
-                image: false,
-                video: false,
-                pdf: false,
-              },
-              output: {
-                text: true,
-                audio: false,
-                image: false,
-                video: false,
-                pdf: false,
-              },
-              interleaved: false,
-            },
-            release_date: "",
-            variants: {},
-          } satisfies Model,
-        ]),
-      ),
+      models: Object.fromEntries(models.map((id) => [id, fromOllamaModel(id)])),
     }
   }
 
@@ -1168,9 +1169,10 @@ export namespace Provider {
           using _ = log.time("state")
           const cfg = yield* config.get()
           const modelsDev = yield* Effect.promise(() => ModelsDev.get())
+          const ollama = yield* Effect.promise(() => Ollama.models(process.env.OLLAMA_URL || Ollama.DEFAULT_URL))
           const lmstudio = yield* Effect.promise(() => LMStudio.models(process.env.LMSTUDIO_URL || LMStudio.DEFAULT_URL))
           const database: Record<string, Info> = {
-            [ProviderID.make("ollama")]: fromOllamaProvider(),
+            ...(ollama.length ? { [ProviderID.make("ollama")]: fromOllamaProvider(ollama) } : {}),
             ...(lmstudio.length ? { [ProviderID.make("lmstudio")]: fromLMStudioProvider(lmstudio) } : {}),
           }
 

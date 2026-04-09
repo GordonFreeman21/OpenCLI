@@ -25,7 +25,7 @@ await Bun.file(`./dist/${pkg.name}/package.json`).write(
     {
       name: pkg.name,
       bin: {
-        [pkg.name]: pkg.bin?.[pkg.name] ?? "./bin/opencode",
+        [pkg.name]: Object.values(pkg.bin ?? {})[0] ?? "./bin/opencode",
       },
       scripts: {
         postinstall: "bun ./postinstall.mjs || node ./postinstall.mjs",
