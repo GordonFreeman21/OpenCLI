@@ -31,10 +31,15 @@ You can also install with Bun:
 bun add -g opencli
 ```
 
-Until the npm registry package is published, you can install straight from GitHub:
+The npm package is **not published yet**, and `npm install -g github:GordonFreeman21/OpenCLI.git` does **not** work yet because this repo is still a Bun workspace monorepo.
+
+Until the package is published, use the source workflow instead:
 
 ```bash
-npm install -g github:GordonFreeman21/OpenCLI.git
+git clone https://github.com/GordonFreeman21/OpenCLI.git
+cd OpenCLI
+bun install --ignore-scripts
+bun run dev
 ```
 
 ## Local model backends

@@ -14,10 +14,15 @@ Run it from your terminal:
 opencli
 ```
 
-GitHub install fallback:
+The npm package is not published yet, and a raw GitHub npm install does not work yet because the repo root is still a Bun workspace monorepo.
+
+Use the source workflow for now:
 
 ```bash
-npm install -g github:GordonFreeman21/OpenCLI.git
+git clone https://github.com/GordonFreeman21/OpenCLI.git
+cd OpenCLI
+bun install --ignore-scripts
+bun run dev
 ```
 
 Local backends:
