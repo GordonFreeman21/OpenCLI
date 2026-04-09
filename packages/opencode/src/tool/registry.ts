@@ -1,4 +1,4 @@
-import { PlanExitTool } from "./plan"
+import { PlanEnterTool, PlanExitTool } from "./plan"
 import { QuestionTool } from "./question"
 import { BashTool } from "./bash"
 import { EditTool } from "./edit"
@@ -160,7 +160,8 @@ export namespace ToolRegistry {
             patch: Tool.init(ApplyPatchTool),
             question: Tool.init(question),
             lsp: Tool.init(LspTool),
-            plan: Tool.init(PlanExitTool),
+            plan_enter: Tool.init(PlanEnterTool),
+            plan_exit: Tool.init(PlanExitTool),
           })
 
           return {
@@ -182,7 +183,7 @@ export namespace ToolRegistry {
               tool.skill,
               tool.patch,
               ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
-              ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),
+              ...(["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) ? [tool.plan_enter, tool.plan_exit] : []),
             ],
             task: tool.task,
             read: tool.read,

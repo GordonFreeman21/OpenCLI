@@ -44,6 +44,7 @@ import { AppFileSystem } from "@/filesystem"
 import { Truncate } from "@/tool/truncate"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
+import { Autopilot } from "@/autopilot"
 import { Cause, Effect, Exit, Layer, Option, Scope, ServiceMap } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
@@ -254,6 +255,27 @@ export namespace SessionPrompt {
       }) {
         const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
         if (!userMessage) return input.messages
+        const plan = Session.plan(input.session)
+        const exists = yield* fsys.existsSafe(plan)
+        const note = Autopilot.reminder({
+          agent: input.agent.name,
+          plan,
+          exists,
+        })
+        if (
+          note &&
+          !userMessage.parts.some((part) => part.type === "text" && "synthetic" in part && part.synthetic && part.text === note)
+        ) {
+          const part = yield* sessions.updatePart({
+            id: PartID.ascending(),
+            messageID: userMessage.info.id,
+            sessionID: userMessage.info.sessionID,
+            type: "text",
+            text: note,
+            synthetic: true,
+          })
+          userMessage.parts.push(part)
+        }
 
         if (!Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE) {
           if (input.agent.name === "plan") {
@@ -282,7 +304,6 @@ export namespace SessionPrompt {
 
         const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
         if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
-          const plan = Session.plan(input.session)
           if (!(yield* fsys.existsSafe(plan))) return input.messages
           const part = yield* sessions.updatePart({
             id: PartID.ascending(),
@@ -299,8 +320,6 @@ export namespace SessionPrompt {
 
         if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") return input.messages
 
-        const plan = Session.plan(input.session)
-        const exists = yield* fsys.existsSafe(plan)
         if (!exists) yield* fsys.ensureDir(path.dirname(plan)).pipe(Effect.catch(Effect.die))
         const part = yield* sessions.updatePart({
           id: PartID.ascending(),
@@ -317,7 +336,7 @@ You should build your plan incrementally by writing to or editing this file. NOT
 ## Plan Workflow
 
 ### Phase 1: Initial Understanding
-Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the explore subagent type.
+Goal: Gain a comprehensive understanding of the user's request by reading through code${Autopilot.isEnabled() ? " and the existing project context" : " and asking them questions"}. Critical: In this phase you should only use the explore subagent type.
 
 1. Focus on understanding the user's request and the code associated with their request
 
@@ -327,7 +346,11 @@ Goal: Gain a comprehensive understanding of the user's request by reading throug
    - Quality over quantity - 3 agents maximum, but you should try to use the minimum number of agents necessary (usually just 1)
    - If using multiple agents: Provide each agent with a specific search focus or area to explore. Example: One agent searches for existing implementations, another explores related components, a third investigates testing patterns
 
-3. After exploring the code, use the question tool to clarify ambiguities in the user request up front.
+3. ${
+   Autopilot.isEnabled()
+     ? "Resolve ambiguities from the code, the request, and reasonable assumptions up front. Do not stop to ask the user routine clarification questions in autopilot mode."
+     : "After exploring the code, use the question tool to clarify ambiguities in the user request up front."
+ }
 
 ### Phase 2: Design
 Goal: Design an implementation approach.
@@ -360,7 +383,11 @@ In the agent prompt:
 Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's intentions.
 1. Read the critical files identified by agents to deepen your understanding
 2. Ensure that the plans align with the user's original request
-3. Use question tool to clarify any remaining questions with the user
+3. ${
+   Autopilot.isEnabled()
+     ? "Resolve any remaining uncertainty from context and make the narrowest reasonable assumption instead of asking the user."
+     : "Use question tool to clarify any remaining questions with the user"
+ }
 
 ### Phase 4: Final Plan
 Goal: Write your final plan to the plan file (the only file you can edit).
@@ -370,15 +397,15 @@ Goal: Write your final plan to the plan file (the only file you can edit).
 - Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
 
 ### Phase 5: Call plan_exit tool
-At the very end of your turn, once you have asked the user questions and are happy with your final plan file - you should always call plan_exit to indicate to the user that you are done planning.
-This is critical - your turn should only end with either asking the user a question or calling plan_exit. Do not stop unless it's for these 2 reasons.
+At the very end of your turn, once you are happy with your final plan file - you should always call plan_exit to indicate that planning is complete.
+This is critical - your turn should only end with either ${Autopilot.isEnabled() ? "calling plan_exit so execution can continue automatically" : "asking the user a question or calling plan_exit"}. Do not stop unless it's for these reasons.
 
-**Important:** Use question tool to clarify requirements/approach, use plan_exit to request plan approval. Do NOT use question tool to ask "Is this plan okay?" - that's what plan_exit does.
+**Important:** ${Autopilot.isEnabled() ? "Do not use question tool in autopilot mode. Use plan_exit once the plan is ready so execution can continue." : `Use question tool to clarify requirements/approach, use plan_exit to request plan approval. Do NOT use question tool to ask "Is this plan okay?" - that's what plan_exit does.`}
 
-NOTE: At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins.
+NOTE: ${Autopilot.isEnabled() ? "In autopilot mode you should avoid blocking on user feedback. Make well-scoped assumptions, document them in the plan, and continue into execution." : "At any point in time through this workflow you should feel free to ask the user questions or clarifications. Don't make large assumptions about user intent. The goal is to present a well researched plan to the user, and tie any loose ends before implementation begins."}
 </system-reminder>`,
-          synthetic: true,
-        })
+            synthetic: true,
+          })
         userMessage.parts.push(part)
         return input.messages
       })

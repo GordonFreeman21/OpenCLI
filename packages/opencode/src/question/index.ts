@@ -5,6 +5,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 import { SessionID, MessageID } from "@/session/schema"
 import { Log } from "@/util/log"
+import { Autopilot } from "@/autopilot"
 import z from "zod"
 import { QuestionID } from "./schema"
 
@@ -82,6 +83,12 @@ export namespace Question {
     }
   }
 
+  export class AutopilotError extends Schema.TaggedErrorClass<AutopilotError>()("QuestionAutopilotError", {}) {
+    override get message() {
+      return "Autopilot mode is active. Do not ask the user questions unless you are completely blocked. Make a reasonable assumption, use the plan, and continue autonomously."
+    }
+  }
+
   interface PendingEntry {
     info: Request
     deferred: Deferred.Deferred<Answer[], RejectedError>
@@ -98,7 +105,7 @@ export namespace Question {
       sessionID: SessionID
       questions: Info[]
       tool?: { messageID: MessageID; callID: string }
-    }) => Effect.Effect<Answer[], RejectedError>
+    }) => Effect.Effect<Answer[], RejectedError | AutopilotError>
     readonly reply: (input: { requestID: QuestionID; answers: Answer[] }) => Effect.Effect<void>
     readonly reject: (requestID: QuestionID) => Effect.Effect<void>
     readonly list: () => Effect.Effect<Request[]>
@@ -134,6 +141,11 @@ export namespace Question {
         questions: Info[]
         tool?: { messageID: MessageID; callID: string }
       }) {
+        if (Autopilot.isEnabled()) {
+          log.info("blocked in autopilot", { questions: input.questions.length })
+          return yield* new AutopilotError()
+        }
+
         const pending = (yield* InstanceState.get(state)).pending
         const id = QuestionID.ascending()
         log.info("asking", { id, questions: input.questions.length })

@@ -94,6 +94,16 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
+  .option("mode", {
+    describe: "execution mode",
+    type: "string",
+    choices: ["ask", "autopilot"],
+    default: "ask",
+  })
+  .option("ask", {
+    describe: "run in ask mode — request approval before sensitive actions",
+    type: "boolean",
+  })
   .option("autopilot", {
     describe: "enable autopilot mode — auto-approve all permissions",
     type: "boolean",
@@ -109,14 +119,23 @@ const cli = yargs(args)
     type: "boolean",
   })
   .middleware(async (opts) => {
+    if (opts.ask && opts.autopilot) {
+      throw new Error("Use either --ask or --autopilot, not both")
+    }
+
     if (opts.pure) {
       process.env.OPENCODE_PURE = "1"
     }
 
-    if (opts.autopilot) {
-      Autopilot.enable()
-      process.stderr.write(Autopilot.banner())
-    }
+    const mode = (() => {
+      if (opts.ask) return "ask"
+      if (opts.autopilot) return "autopilot"
+      return (opts.mode as Autopilot.Mode | undefined) ?? "ask"
+    })()
+    Autopilot.set(mode)
+    process.env.OPENCLI_MODE = mode
+
+    if (mode === "autopilot") process.stderr.write(Autopilot.banner())
 
     if (opts.model) {
       process.env.OPENCLI_MODEL = opts.model as string

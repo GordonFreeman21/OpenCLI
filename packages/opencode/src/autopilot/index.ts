@@ -4,7 +4,10 @@ import z from "zod"
 export namespace Autopilot {
   const log = Log.create({ service: "autopilot" })
 
-  let enabled = false
+  export const Mode = z.enum(["ask", "autopilot"])
+  export type Mode = z.infer<typeof Mode>
+
+  let current: Mode = "ask"
 
   const stats = {
     granted: 0,
@@ -23,18 +26,29 @@ export namespace Autopilot {
   })
   export type Schema = z.infer<typeof Schema>
 
+  export function get() {
+    return current
+  }
+
   export function isEnabled() {
-    return enabled
+    return current === "autopilot"
+  }
+
+  export function isAsk() {
+    return current === "ask"
+  }
+
+  export function set(mode: Mode) {
+    current = mode
+    log.info("mode changed", { mode })
   }
 
   export function enable() {
-    enabled = true
-    log.info("autopilot enabled — all permissions auto-granted")
+    set("autopilot")
   }
 
   export function disable() {
-    enabled = false
-    log.info("autopilot disabled")
+    set("ask")
   }
 
   export function track(permission: string, patterns: string[]) {
@@ -54,7 +68,7 @@ export namespace Autopilot {
   type Rule = { permission: string; pattern: string; action: "allow" | "deny" | "ask" }
 
   export function rules(): Rule[] {
-    if (!enabled) return []
+    if (!isEnabled()) return []
 
     return [
       { permission: "read", pattern: "*", action: "allow" as const },
@@ -88,6 +102,40 @@ export namespace Autopilot {
       "",
     ]
     return lines.join("\n")
+  }
+
+  export function reminder(input: { agent: string; plan: string; exists: boolean }) {
+    if (isAsk()) {
+      return `<system-reminder>
+Execution mode is ask.
+Ask the user for clarification when requirements are genuinely ambiguous.
+When a tool requires approval, pause and wait for the user instead of assuming consent.
+</system-reminder>`
+    }
+
+    const plan =
+      input.agent === "plan"
+        ? [
+            `Use the session plan at ${input.plan} as your working document.`,
+            input.exists
+              ? "Read it first, refine it as needed, and keep execution aligned with it."
+              : "Create it before major implementation work so the task has a concrete plan.",
+          ].join("\n")
+        : [
+            `For any non-trivial task, use the session plan at ${input.plan}.`,
+            input.exists
+              ? "Read it before major work and update it if the scope changes."
+              : "Create it before major edits so implementation follows a concrete plan.",
+          ].join("\n")
+
+    return `<system-reminder>
+Execution mode is autopilot.
+Work autonomously until the task is complete.
+Do not use the question tool for routine clarification. Make reasonable assumptions and continue.
+${plan}
+Deploy specialized agents with the task tool when parallel research or focused execution will help.
+Do not stop to ask for confirmation between planning and implementation unless you are truly blocked by missing external information.
+</system-reminder>`
   }
 
   export interface Summary {
